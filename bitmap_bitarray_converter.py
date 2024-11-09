@@ -4,17 +4,31 @@
 
 
 import pygame
+import ctypes
+
+
+def get_screen_size():
+    user32 = ctypes.windll.user32
+    return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 
 
 def main(height, width, barray):
     pygame.init()
 
-    # create a screen:
-    pxsize = 20
+    # Get the screen size
+    screen_width, screen_height = get_screen_size()
 
-    screen_height = height * pxsize
-    screen_width = width * pxsize
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    # Calculate the maximum pixel size that will fit on the screen
+    max_pxsize_width = (screen_width - 100) // width  # Leave some margin
+    max_pxsize_height = (screen_height - 100) // height  # Leave some margin
+    pxsize = min(max_pxsize_width, max_pxsize_height, 20)  # Use the smaller value, but cap at 20
+
+    # Calculate the grid size
+    grid_width = width * pxsize
+    grid_height = height * pxsize
+
+    # Create a screen that fits the grid
+    screen = pygame.display.set_mode((grid_width, grid_height))
     pygame.display.set_caption("Bitmap Bitarray Converter")
 
     # (red, green, blue)
@@ -32,6 +46,11 @@ def main(height, width, barray):
         # create a 2D array
         cell_colors = [[color_ledoff for y in range(height)] for x in range(width)]
 
+    # Variables for panning
+    pan_x, pan_y = 0, 0
+    panning = False
+    last_mouse_pos = (0, 0)
+
     done = False
     while not done:
         for event in pygame.event.get():
@@ -42,27 +61,57 @@ def main(height, width, barray):
                 if event.key == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_CTRL:
                     write_grid_to_file(height, width, cell_colors, color_ledon)
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                # get the mouse position
-                pos = pygame.mouse.get_pos()
-                # determine the column and row of the cell that was clicked
-                col = pos[0] // pxsize
-                row = pos[1] // pxsize
-                # toggle the color of the cell
-                if cell_colors[col][row] == color_ledoff:
-                    cell_colors[col][row] = color_ledon
-                else:
-                    cell_colors[col][row] = color_ledoff
+                if event.button == 1:  # Left click
+                    # get the mouse position
+                    pos = pygame.mouse.get_pos()
+                    # determine the column and row of the cell that was clicked
+                    col = (pos[0] - pan_x) // pxsize
+                    row = (pos[1] - pan_y) // pxsize
+                    if 0 <= col < width and 0 <= row < height:
+                        # toggle the color of the cell
+                        if cell_colors[col][row] == color_ledoff:
+                            cell_colors[col][row] = color_ledon
+                        else:
+                            cell_colors[col][row] = color_ledoff
+                elif event.button == 3:  # Right click
+                    panning = True
+                    last_mouse_pos = event.pos
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 3:  # Right click release
+                    panning = False
+            elif event.type == pygame.MOUSEMOTION:
+                if panning:
+                    dx = event.pos[0] - last_mouse_pos[0]
+                    dy = event.pos[1] - last_mouse_pos[1]
+                    pan_x += dx
+                    pan_y += dy
+                    last_mouse_pos = event.pos
+
+        screen.fill((50, 50, 50))  # Fill with dark gray
 
         # draw the cells
-        for x in range(0, screen_width, pxsize):
-            for y in range(0, screen_height, pxsize):
-                # get the color of the cell
-                color = cell_colors[x // pxsize][y // pxsize]
-                pygame.draw.rect(screen, color, pygame.Rect(x, y, pxsize, pxsize))
+        for x in range(width):
+            for y in range(height):
+                color = cell_colors[x][y]
+                pygame.draw.rect(
+                    screen, color, pygame.Rect(x * pxsize + pan_x, y * pxsize + pan_y, pxsize, pxsize)
+                )
 
                 # draw the grid lines
-                pygame.draw.line(screen, c, (x, y), (x + pxsize, y), 1)  # horizontal line
-                pygame.draw.line(screen, c, (x, y), (x, y + pxsize), 1)  # vertical line
+                pygame.draw.line(
+                    screen,
+                    c,
+                    (x * pxsize + pan_x, y * pxsize + pan_y),
+                    (x * pxsize + pan_x + pxsize, y * pxsize + pan_y),
+                    1,
+                )  # horizontal line
+                pygame.draw.line(
+                    screen,
+                    c,
+                    (x * pxsize + pan_x, y * pxsize + pan_y),
+                    (x * pxsize + pan_x, y * pxsize + pan_y + pxsize),
+                    1,
+                )  # vertical line
 
         pygame.display.update()
 
